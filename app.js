@@ -67,7 +67,9 @@ const server = http.createServer((req, res) => {
         break;
       }
     }
-    if (!file) {
+    const extGuess = path.extname((req.url || "").split("?")[0]).toLowerCase();
+    const isAsset = [".css", ".js", ".png", ".jpg", ".jpeg", ".ico", ".svg", ".webp", ".gif", ".woff", ".woff2", ".map", ".json", ".webmanifest"].includes(extGuess);
+    if (!file && !isAsset) {
       const fallback = path.join(ROOT, "index.html");
       if (isFile(fallback)) file = fallback;
     }
