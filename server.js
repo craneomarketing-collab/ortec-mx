@@ -57,6 +57,25 @@ function candidates(urlPath) {
   return list;
 }
 
+const GTM_HEAD = "<!-- Google Tag Manager --><script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-WVL4N8TP');</script><!-- End Google Tag Manager -->";
+const GTM_BODY = '<!-- Google Tag Manager (noscript) --><noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WVL4N8TP" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript><!-- End Google Tag Manager (noscript) -->';
+
+function injectGtm(html) {
+  if (html.indexOf("GTM-WVL4N8TP") !== -1) return html;
+  let out = html;
+  const headClose = out.match(/<head[^>]*>/i);
+  if (headClose) {
+    const i = out.indexOf(headClose[0]) + headClose[0].length;
+    out = out.slice(0, i) + GTM_HEAD + out.slice(i);
+  }
+  const bodyOpen = out.match(/<body[^>]*>/i);
+  if (bodyOpen) {
+    const i = out.indexOf(bodyOpen[0]) + bodyOpen[0].length;
+    out = out.slice(0, i) + GTM_BODY + out.slice(i);
+  }
+  return out;
+}
+
 const server = http.createServer((req, res) => {
   try {
     const urlPath = req.url || "/";
@@ -79,6 +98,13 @@ const server = http.createServer((req, res) => {
       return;
     }
     const ext = path.extname(file).toLowerCase();
+    if (ext === ".html") {
+      let html = fs.readFileSync(file, "utf8");
+      html = injectGtm(html);
+      res.writeHead(200, { "Content-Type": MIME[ext] });
+      res.end(html);
+      return;
+    }
     res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
     fs.createReadStream(file).pipe(res);
   } catch (err) {
