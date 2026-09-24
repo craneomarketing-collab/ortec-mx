@@ -21,6 +21,7 @@ const MIME = {
   ".woff2": "font/woff2",
   ".json": "application/json",
   ".txt": "text/plain; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8",
   ".webmanifest": "application/manifest+json",
   ".map": "application/json",
 };
@@ -87,7 +88,7 @@ const server = http.createServer((req, res) => {
       }
     }
     const extGuess = path.extname((req.url || "").split("?")[0]).toLowerCase();
-    const isAsset = [".css", ".js", ".png", ".jpg", ".jpeg", ".ico", ".svg", ".webp", ".gif", ".woff", ".woff2", ".map", ".json", ".webmanifest"].includes(extGuess);
+    const isAsset = [".css", ".js", ".png", ".jpg", ".jpeg", ".ico", ".svg", ".webp", ".gif", ".woff", ".woff2", ".map", ".json", ".webmanifest", ".txt", ".xml"].includes(extGuess);
     if (!file && !isAsset) {
       const fallback = path.join(ROOT, "index.html");
       if (isFile(fallback)) file = fallback;
