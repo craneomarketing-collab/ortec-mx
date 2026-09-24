@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://www.ortec.mx/sitemap.xml
+
+# No indexar previews ni parámetros de instalador
+Disallow: /?install=
