@@ -30,7 +30,8 @@ function safeJoin(root, urlPath) {
   const decoded = decodeURIComponent(urlPath.split("?")[0].split("#")[0] || "/");
   const rel = decoded.replace(/^\/+/, "");
   const abs = path.normalize(path.join(root, rel));
-  if (!abs.startsWith(root)) return null;
+  const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+  if (abs !== root && !abs.startsWith(rootWithSep)) return null;
   return abs;
 }
 
@@ -77,9 +78,42 @@ function injectGtm(html) {
   return out;
 }
 
+function sendTextFile(res, filePath, contentType) {
+  const body = fs.readFileSync(filePath);
+  res.writeHead(200, {
+    "Content-Type": contentType,
+    "Cache-Control": "public, max-age=300",
+    "Content-Length": body.length,
+  });
+  res.end(body);
+}
+
 const server = http.createServer((req, res) => {
   try {
-    const urlPath = req.url || "/";
+    const urlPath = (req.url || "/").split("?")[0].split("#")[0] || "/";
+
+    // Explicit SEO assets (avoid SPA fallback and stream edge cases)
+    if (urlPath === "/robots.txt") {
+      const f = path.join(ROOT, "robots.txt");
+      if (!isFile(f)) {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Not found");
+        return;
+      }
+      sendTextFile(res, f, "text/plain; charset=utf-8");
+      return;
+    }
+    if (urlPath === "/sitemap.xml") {
+      const f = path.join(ROOT, "sitemap.xml");
+      if (!isFile(f)) {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Not found");
+        return;
+      }
+      sendTextFile(res, f, "application/xml; charset=utf-8");
+      return;
+    }
+
     let file = null;
     for (const c of candidates(urlPath)) {
       if (isFile(c)) {
@@ -87,7 +121,7 @@ const server = http.createServer((req, res) => {
         break;
       }
     }
-    const extGuess = path.extname((req.url || "").split("?")[0]).toLowerCase();
+    const extGuess = path.extname(urlPath).toLowerCase();
     const isAsset = [".css", ".js", ".png", ".jpg", ".jpeg", ".ico", ".svg", ".webp", ".gif", ".woff", ".woff2", ".map", ".json", ".webmanifest", ".txt", ".xml"].includes(extGuess);
     if (!file && !isAsset) {
       const fallback = path.join(ROOT, "index.html");
@@ -102,16 +136,29 @@ const server = http.createServer((req, res) => {
     if (ext === ".html") {
       let html = fs.readFileSync(file, "utf8");
       html = injectGtm(html);
-      res.writeHead(200, { "Content-Type": MIME[ext] });
-      res.end(html);
+      const buf = Buffer.from(html, "utf8");
+      res.writeHead(200, { "Content-Type": MIME[ext], "Content-Length": buf.length });
+      res.end(buf);
       return;
     }
-    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+    if (ext === ".txt" || ext === ".xml" || ext === ".json" || ext === ".webmanifest" || ext === ".svg" || ext === ".css" || ext === ".js" || ext === ".map") {
+      sendTextFile(res, file, MIME[ext] || "application/octet-stream");
+      return;
+    }
+    const stat = fs.statSync(file);
+    res.writeHead(200, {
+      "Content-Type": MIME[ext] || "application/octet-stream",
+      "Content-Length": stat.size,
+    });
     fs.createReadStream(file).pipe(res);
   } catch (err) {
     console.error(err);
-    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Server error");
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Server error");
+    } else {
+      res.end();
+    }
   }
 });
 
