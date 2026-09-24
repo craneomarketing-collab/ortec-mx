@@ -103,14 +103,15 @@ const server = http.createServer((req, res) => {
       sendTextFile(res, f, "text/plain; charset=utf-8");
       return;
     }
-    if (urlPath === "/sitemap.xml") {
+    if (urlPath === "/sitemap.xml" || urlPath === "/sitemap") {
       const f = path.join(ROOT, "sitemap.xml");
       if (!isFile(f)) {
         res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
         res.end("Not found");
         return;
       }
-      sendTextFile(res, f, "application/xml; charset=utf-8");
+      // text/xml: Airo/CDN has been returning 500/block on application/xml for .xml
+      sendTextFile(res, f, "text/xml; charset=utf-8");
       return;
     }
 
