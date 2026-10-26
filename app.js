@@ -78,6 +78,46 @@ function injectGtm(html) {
   return out;
 }
 
+// --- Canonical host / URL (SEO: "Duplicada sin canonical" en GSC) ---
+const CANONICAL_ORIGIN = "https://www.ortec.mx";
+const CANONICAL_HOST = "www.ortec.mx";
+// Solo estos hosts se redirigen; localhost, IPs y health checks no se tocan.
+const REDIRECT_HOSTS = new Set(["ortec.mx", "www.ortec.mx"]);
+
+function requestHost(req) {
+  const raw = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim().toLowerCase();
+  return raw.replace(/:\d+$/, "");
+}
+
+function requestProto(req) {
+  const xf = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
+  if (xf) return xf;
+  try {
+    const v = JSON.parse(req.headers["cf-visitor"] || "{}");
+    if (v && v.scheme) return String(v.scheme).toLowerCase();
+  } catch {}
+  return ""; // desconocido: no forzamos https para evitar bucles
+}
+
+function canonicalPath(urlPath) {
+  const p = urlPath.replace(/\/+$/, "");
+  return p === "" ? "/" : p;
+}
+
+function escAttr(s) {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function injectCanonical(html, urlPath) {
+  const href = escAttr(CANONICAL_ORIGIN + canonicalPath(urlPath));
+  let out = html.replace(/<link[^>]+rel=["']canonical["'][^>]*>/gi, "").replace(/<meta[^>]+property=["']og:url["'][^>]*>/gi, "");
+  const tags = '<link rel="canonical" href="' + href + '"/><meta property="og:url" content="' + href + '"/>';
+  const head = out.match(/<head[^>]*>/i);
+  if (!head) return out;
+  const i = out.indexOf(head[0]) + head[0].length;
+  return out.slice(0, i) + tags + out.slice(i);
+}
+
 function sendTextFile(res, filePath, contentType) {
   const body = fs.readFileSync(filePath);
   res.writeHead(200, {
@@ -90,7 +130,22 @@ function sendTextFile(res, filePath, contentType) {
 
 const server = http.createServer((req, res) => {
   try {
-    const urlPath = (req.url || "/").split("?")[0].split("#")[0] || "/";
+    const rawUrl = req.url || "/";
+    const urlPath = rawUrl.split("?")[0].split("#")[0] || "/";
+    const query = rawUrl.indexOf("?") !== -1 ? rawUrl.slice(rawUrl.indexOf("?")) : "";
+
+    // 301 a https://www.ortec.mx (host sin www, http, o barra final en paginas)
+    const host = requestHost(req);
+    if (REDIRECT_HOSTS.has(host)) {
+      const proto = requestProto(req);
+      const ext0 = path.extname(urlPath);
+      const wantPath = ext0 ? urlPath : canonicalPath(urlPath);
+      if (host !== CANONICAL_HOST || proto === "http" || wantPath !== urlPath) {
+        res.writeHead(301, { Location: CANONICAL_ORIGIN + wantPath + query, "Cache-Control": "public, max-age=3600" });
+        res.end();
+        return;
+      }
+    }
 
     // Explicit SEO assets (avoid SPA fallback and stream edge cases)
     if (urlPath === "/robots.txt") {
@@ -137,6 +192,7 @@ const server = http.createServer((req, res) => {
     if (ext === ".html") {
       let html = fs.readFileSync(file, "utf8");
       html = injectGtm(html);
+      html = injectCanonical(html, urlPath);
       const buf = Buffer.from(html, "utf8");
       res.writeHead(200, { "Content-Type": MIME[ext], "Content-Length": buf.length });
       res.end(buf);
