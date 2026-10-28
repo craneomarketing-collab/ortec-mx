@@ -1,6 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { injectConsent } = require("./consent");
 
 const ROOT = path.join(__dirname, "public");
 const PORT = Number(process.env.PORT) || 3000;
@@ -192,6 +193,7 @@ const server = http.createServer((req, res) => {
     if (ext === ".html") {
       let html = fs.readFileSync(file, "utf8");
       html = injectGtm(html);
+      html = injectConsent(html); // despues de GTM => queda ANTES de GTM en <head>
       html = injectCanonical(html, urlPath);
       const buf = Buffer.from(html, "utf8");
       res.writeHead(200, { "Content-Type": MIME[ext], "Content-Length": buf.length });
